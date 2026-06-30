@@ -1,33 +1,55 @@
 import pandas as pd
 import numpy as np
+import os
+import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Read in csv file
-movies = pd.read_csv("dataset/TMDB_movie_dataset_v11.csv", encoding="utf-8")
-# Checking fields:
-    # print(movies.head())
+if os.path.exists("movies.pkl"):
+    print("Loading csv...\n")
+    joblib.load("movies.pkl")
 
-# Make sure all empty genre and keyword fields have a string associated with it
-movies["keywords"] = movies["keywords"].fillna("")
-movies["genres"] = movies["genres"].fillna("")
-movies["overview"] = movies["overview"].fillna("")
-movies["adult"] = movies["adult"].fillna("")
-movies["adult"] = movies["adult"].astype(bool)
+else:
+
+    print("Reading csv...\n")
+    # Read in csv file
+    movies = pd.read_csv("dataset/TMDB_movie_dataset_v11.csv", encoding="utf-8")
+    # Checking fields:
+        # print(movies.head())
+
+    # Make sure all empty genre and keyword fields have a string associated with it
+    movies["keywords"] = movies["keywords"].fillna("")
+    movies["genres"] = movies["genres"].fillna("")
+    movies["overview"] = movies["overview"].fillna("")
+    movies["adult"] = movies["adult"].fillna("")
+    movies["adult"] = movies["adult"].astype(bool)
+
+    # id -> index
+    indices = pd.Series(movies.index, index=movies["id"])
+
+    # Define features to be a combination of keyword, overview, genre
+    movies["features"] = (movies["genres"] + movies["keywords"] + movies["overview"])
+
+    joblib.dump(movies, "movies.pkl")
 
 
-# id -> index
-indices = pd.Series(movies.index, index=movies["id"])
+# Optimize load time by creating and saving the tfidf objects
+if os.path.exists("tfidf.pkl") and os.path.exists("tfidf_matrix.pkl"):
+    print("Loading saved TF-IDF...\n")
+    tfidf = joblib.load("tfidf.pkl")
+    tfidf_matrix = joblib.load("tfidf_matrix.pkl")
+else:
+    print("Building TF-IDF...\n")
+    # This creates the empty tfidf object
+    tfidf = TfidfVectorizer()
 
-# This creates the empty tfidf object
-tfidf = TfidfVectorizer()
+    # The fit learns the vocab and the tranform puts it into a vector form with movies as row, features as column
+    # and tfidf scores as values
+    tfidf_matrix = tfidf.fit_transform(movies["features"])
 
-# Define features to be a combination of keyword, overview, genre
-movies["features"] = (movies["genres"] + movies["keywords"] + movies["overview"])
-
-# The fit learns the vocab and the tranform puts it into a vector form with movies as row, features as column
-# and tfidf scores as values
-tfidf_matrix = tfidf.fit_transform(movies["features"])
+    # Save the objects
+    joblib.dump(tfidf, "tfidf.pkl")
+    joblib.dump(tfidf_matrix, "tfidf_matrix.pkl")
 
 
 # Create the recommend function
@@ -110,9 +132,14 @@ def recommend(title):
 # This is for direct run in CML
 if __name__ == "__main__":
     searching = True
+    cache = {}
     while searching:
         title = input("Enter a movie title: ")
-        if title == "..":
+        if title in cache:
+            print(cache[title])
+        elif title == "..":
             searching = False
         else: 
-            print(recommend(title))
+            recommendations = recommend(title)
+            cache[title] = recommendations
+            print(recommendations)
